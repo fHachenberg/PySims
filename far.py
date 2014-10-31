@@ -191,53 +191,8 @@ class FarFile(object):
     filenames = property(__get_filenames)
     files = property(__get_files)
 
-# Tests
-
-import os.path
-import functools
-import pdb
-import random
-
-official_gamedta_relpath = "TheSims_official_gamedata"
-
 #Testdata
-class KnownFarFile(object):
-    def __init__(self, filename, contents):
-        self.contents = dict(contents)
-        self.filename = filename 
-
-    def get_any_filename(self):
-        return random.choice(list(self.contents.keys()))
-
-    def get_file_size(self, filename):
-        return self.contents[filename][0]
-        
-known_far_file = KnownFarFile(os.path.join(official_gamedta_relpath, "GameData/Global.far"), 
-                 [('PhoneGlobals.iff', (41728, 41728, 16)),
-                  ('PersonGlobals.iff', (118356, 118356, 41744)),
-                  ('ArtGlobals.iff', (2048, 2048, 160100)),
-                  ('CounterGlobals.iff', (12732, 12732, 162148)),
-                  ('DoorGlobals.iff', (424, 424, 174880)),
-                  ('LevelGlobals.iff', (1129, 1129, 175304)),
-                  ('LightGlobals.iff', (3070, 3070, 176433)),
-                  ('RentalClerkGlobals.iff', (236262, 236262, 179503)),
-                  ('RentalShackGlobals.iff', (25978, 25978, 415765)),
-                  ('SalesClerkGlobals.iff', (178265, 178265, 441743)),
-                  ('SocialGlobals.iff', (22452, 22452, 620008)),
-                  ('SofaGlobals.iff', (29514, 29514, 642460)),
-                  ('VacationCarnieGlobals.iff', (147542, 147542, 671974)),
-                  ('VacationDirectorGlobals.iff', (149629, 149629, 819516)),
-                  ('VacationMascotGlobals.iff', (148920, 148920, 969145)),
-                  ('WaiterGlobals.iff', (180204, 180204, 1118065)),
-                  ('CarGlobals.iff', (6574, 6574, 1298269)),
-                  ('Global.iff', (111003, 111003, 1304843))])
-
-def requires_known_farfile(testfunc):
-    @functools.wraps(testfunc)
-    def test_decorated():
-        testfunc(known_far_file=known_far_file)
-    return test_decorated
-
+from gamedata_for_tests import requires_known_farfile
 from nose.tools import assert_raises
 
 def test_invalid_filename():
