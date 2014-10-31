@@ -7,6 +7,12 @@ Mission
 A Python library to read in data files from The Sims™.
 The Sims™ is a trademark of Maxis and Electronic Arts.
 
+PySims is based on SimTech Library and the thorough documentation of
+the file formats involved in The Sims™ done by Dave Baum, Greg Noel, 
+Peter Gould and others. The docs are available at
+
+    http://simtech.sourceforge.net/home/welcome.html
+
 Requirements
 ------------
 
