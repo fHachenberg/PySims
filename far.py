@@ -15,104 +15,27 @@
 #http://simtech.sourceforge.net/home/welcome.html
 #The Sims™ is a trademark of Maxis and Electronic Arts.
 
+'''
+Access to FAR files
+
+FAR files are archives of various data files, often IFF archives themselves
+http://simtech.sourceforge.net/tech/far.html
+'''
+
 import struct
-import io
-from io import SEEK_SET, SEEK_CUR, SEEK_END
 
-class FreeFarFileEntryStream(io.IOBase):
-    '''
-    Provides a read-only file-like bytes stream 
-    to an entry in a FAR file
-    '''
-    def __init__(self, stream, off, length):
-        self.stream = stream
-        self.stream.seek(off)
-        self.off = off
-        self.length = length
-        self.end = off + length #offset of byte behind end of file
- 
-    '''
-    def __iter__(self):
-        while True:
-            line = self.readline()
-            if line == "":
-                return
-            yield line
-
-    def __next__(self):
-        line = self.readline()
-        if line == "":
-            raise StopIteration
-        return line
-    '''
-
-    def read(self):
-        pos = self.stream.tell()
-        return self.stream.read(self.end-pos)
-
-    def close(self):
-        self.stream.close()
-
-    closed = property(lambda self: self.stream.closed)
-
-    def fileno(self):
-        return self.stream.fileno()
-
-    def flush(self):
-        return self.stream.flush()
-
-    def isatty(self):
-        return False
-
-    def readable(self):
-        return self.stream.readable()
-
-    def readline(self, size=-1):
-        pos = self.stream.tell()
-        if size == -1:
-            size = self.length
-        size = min(size, self.end - pos)
-        return self.stream.readline(size)
-
-    def readlines(self, hint=-1):
-        pos = self.stream.tell()
-        if hint == -1:
-            hint = self.length
-        hint = min(hint, self.end - pos)
-        return self.stream.readlines(hint)
-
-    def seek(self, offset, whence=SEEK_SET):
-        if whence == SEEK_SET:
-            self.stream.seek(min(self.end-1, offset + self.off), SEEK_SET)
-        elif whence == SEEK_CUR:
-            pos = self.stream.tell()
-            if offset > 0:
-                self.stream.seek(min(self.end-pos, offset), SEEK_CUR)
-            else:
-                self.stream.seek(max(self.off-pos, offset), SEEK_CUR)
-        elif whence == SEEK_END:
-            self.stream.seek(max(self.off, self.end+offset), SEEK_SET)
-
-    def seekable(self):
-        return self.stream.seekable()
-
-    def tell(self):
-        return self.stream.tell() - self.off
-     
-    def writable(self):
-        return False
+from subfile import SubFile as FreeFarFileEntryStream
 
 class FarFile(object):
     '''
-    Represents an open FAR file
+    Represents a FAR file
 
-    Works in 2 possible modes:
-        -in the multiple-streams mode, a filename to a FAR file
-         must be provided. The FAR file object then can create multiple
-         read-only file-like objects to access files within the FAR file
-        -in the single-stream mode, the FAR file operates on a given
-         stream. In this mode, only one readwrite file-like object 
-         to access files within the FAR file can be used at one time
+    During object creation, the content is indexed. The interface
+    then allows for read-only access of individual entries via
+    a file-like object.
+
+    This is the base class which is agnostic whether we operate on a
+    physical FAR file or just some data stream.
 
     TODO: implement Context Manager interface
     '''
@@ -126,16 +49,25 @@ class FarFile(object):
             self.len1 = len1
             self.len2 = len2
 
-    def __init__(self, filename):
-        '''      
+    def _create_stream(self):
+        '''
+        Has to be provided by the derived classes.
+        For accessing a physical file, this simply opens another
+        file stream. For accessing a data stream, this could reposition
+        the file pointer or something like that...
+        '''
+        raise StandardError("implementation missing!")
+
+    def __init__(self, databuffer):
+        '''
+        @param databuffer open stream containing the FAR file and nothing more!
+
+        NOTE: The stream is not closed
 
         TODO: implement write access
         '''
-        databuffer = open(filename, "rb")
-        self.filename = filename
 
         self.__entries = []
-        self.access_mode = "multiple"
 
         signature = databuffer.read(8)
         if bytes(signature) != b"FAR!byAZ":
@@ -151,68 +83,56 @@ class FarFile(object):
             filename = databuffer.read(filename_len).decode('ascii')
             print(filename, file_len1, file_len2, file_off)
             return (filename, file_off, file_len1, file_len2)
-        
+
         databuffer.seek(manifest_offset)
         num_entries, = struct.unpack("<I", databuffer.read(4))
         for i in range(num_entries):
             entry = FarFile.FarFileEntry(*read_manifest_entry())
             self.__entries.append(entry)
 
-    def close(self):
-        self.databuffer.close()    
+    def open(self, filename, stream):
+        '''
+        @param stream open Stream which contains the complete FAR file and nothing more! This stream is repositioned and returned
+                      to point to the file entry.
 
-    closed = property(lambda self: self.databuffer.closed)
-        
-    def __get_files(self):
-        if self.access_mode != "multiple":
-            raise StandardError("list of files can only be accessed in multiple mode")
-        for entry in self.__entries:
-            databuffer = open(self.filename, "rb")
-            yield FreeFarFileEntryStream(databuffer, entry.off, entry.length1)
-
-    def __getitem__(self, filename):
+        NOTE: It is not checked whether the stream is actually equivalent to the one the FAR file object was created with
+        '''
         if not filename in self.filenames:
             raise IOError("No such file in FAR file: '" + str(filename) + "'")
         for entry in self.__entries:
             if filename == entry.filename:
-                databuffer = open(self.filename, "rb")
-                return FreeFarFileEntryStream(databuffer, entry.off, entry.len1)
+                return FreeFarFileEntryStream(stream, entry.off, entry.len1)
 
     def __get_filenames(self):
         for entry in self.__entries:
-            yield entry.filename        
-
-    def __iter__(self):
-        return self.__get_files()
+            yield entry.filename
 
     def __len__(self):
         return len(self.__entries)
 
     filenames = property(__get_filenames)
-    files = property(__get_files)
 
-#Testdata
+#Testcode
+
 from gamedata_for_tests import requires_known_farfile
 from nose.tools import assert_raises
-
-def test_invalid_filename():
-    assert_raises(IOError, FarFile, "invalidfilename")
+from io import SEEK_SET, SEEK_CUR, SEEK_END
 
 def test_empty_file():
     #TODO: Test is Unix-specific
-    assert_raises(IOError, FarFile, "/dev/null")
+    assert_raises(IOError, FarFile, open("/dev/null", "rb"))
 
 @requires_known_farfile
 def test_real_dta_create_fileobj(known_far_file):
-    farfile = FarFile(known_far_file.filename)
+    farfile = FarFile(open(known_far_file.filename, "rb"))
     assert len(farfile) > 0
-    assert known_far_file.get_any_filename() in list(farfile.filenames) 
+    assert known_far_file.get_any_filename() in list(farfile.filenames)
 
 @requires_known_farfile
 def test_open_stream(known_far_file):
-    farfile = FarFile(known_far_file.filename)
+    farfile = FarFile(open(known_far_file.filename, "rb"))
     fname = known_far_file.get_any_filename()
-    strm = farfile[fname]
+    strm = farfile.open(fname, open(known_far_file.filename, "rb"))
     strm.seek(known_far_file.get_file_size(fname))
     pos1 = strm.tell()
     strm.seek(known_far_file.get_file_size(fname), SEEK_SET)
@@ -227,10 +147,10 @@ def test_open_stream(known_far_file):
 
 @requires_known_farfile
 def test_open_multiple_streams(known_far_file):
-    farfile = FarFile(known_far_file.filename)
+    farfile = FarFile(open(known_far_file.filename, "rb"))
     fname = known_far_file.get_any_filename()
-    strm1 = farfile[fname]
-    strm2 = farfile[fname]
+    strm1 = farfile.open(fname, open(known_far_file.filename, "rb"))
+    strm2 = farfile.open(fname, open(known_far_file.filename, "rb"))
     data1 = strm1.read()
     data2 = strm2.read()
     assert data1 == data2
