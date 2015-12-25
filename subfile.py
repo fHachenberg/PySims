@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#Copyright (C) 2014 Fabian Hachenberg
+#Copyright (C) 2014, 2015 Fabian Hachenberg
 
 #This file is part of PySims Lib.
 #PySims Lib is free software: you can redistribute it and/or modify

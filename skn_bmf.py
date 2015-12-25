@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#Copyright (C) 2014 Fabian Hachenberg
+#Copyright (C) 2014, 2015 Fabian Hachenberg
 
 #This file is part of PySims Lib.
 #PySims Lib is free software: you can redistribute it and/or modify
@@ -76,8 +76,10 @@ def read_riggedmesh_from_skn_stream(stream):
 
 #Testcode
 
-import os.path
+if __name__ == "__main__":
 
-skn_filepath = os.path.join("TheSims_official_gamedata", "GameData", "Skins", "xskin-c027fa_germ-HEAD-HEAD.skn")
-with open(skn_filepath, "rb") as f:
-    data = read_riggedmesh_from_skn_stream(f)
+    import os.path
+
+    skn_filepath = os.path.join("TheSims_official_gamedata", "GameData", "Skins", "xskin-c027fa_germ-HEAD-HEAD.skn")
+    with open(skn_filepath, "rb") as f:
+        data = read_riggedmesh_from_skn_stream(f)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#Copyright (C) 2014 Fabian Hachenberg
+#Copyright (C) 2014, 2015 Fabian Hachenberg
 
 #This file is part of PySims Lib.
 #PySims Lib is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ import struct
 from itertools import chain
 from io import SEEK_SET, SEEK_END, SEEK_CUR, BytesIO
 
-from subfile import SubFile
+from .subfile import SubFile
 
 import logging
 
@@ -113,12 +113,16 @@ def read_resource_typelist_entry(stream, typecode, version):
         namestr = read_zero_zerminated_string(stream)
     else: #->Pascal-style string
         namestr = read_pascal_style_string(stream)
-    if stream.tell() % 2 != 0:
+
+    padded_debug_str = ""
+    logger.debug("%s, %s", stream.tell(), stream.tell() % 2)
+    if len(namestr)  % 2 != 0:
         stream.read(1) #padding
+        padded_debug_str = "(+1 padding-byte)"
 
-    logger.debug("read ResourceTypeListEntry offset=%s, id=%s, flags=%s, name='%s'", offset, resid, flags, namestr.decode('ascii'))
+    logger.debug("read ResourceTypeListEntry offset=%s, id=%s, flags=%s, name='%s' %s", offset, resid, flags, namestr.decode('ascii', 'replace'), padded_debug_str)
 
-    return IffResourceTypeListEntry(typecode, offset, resid, flags, namestr.decode('ascii'))
+    return IffResourceTypeListEntry(typecode, offset, resid, flags, namestr.decode('ascii', 'replace'))
 
 def read_resource_typelist(stream, version):
     '''
@@ -325,45 +329,72 @@ class IffFile(object):
 
         raise StopIteration
 
+from os.path import join
+
+def extract_iff(stream, output_path):
+    '''
+    Creates file for every iff entry in output_path
+    '''
+    ff = IffFile(stream)
+    for entrystream in ff.iter_open(lambda p: True, stream):
+        header = read_resource_header_from_stream(entrystream)
+        if header.name == "":
+            filename = header.typecode + "_" + str(header.resid)
+        else:
+            filename = header.name.replace("/","\\")
+        with open(join(output_path, filename), "wb") as fp:
+            fp.write(entrystream.read())
+
 #Testcode
 
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.DEBUG)
 
-from nose.tools import assert_raises
-from gamedata_for_tests import requires_known_iff_file
-
+from .gamedata_for_tests import requires_known_iff_file
 import os
 
-@requires_known_iff_file
-def test_read_from_sample_iff_file(known_iff_file):
-    ifffile = IffFile(open(known_iff_file.filename, "rb"))
-    for bmpfile in ifffile.iter_open(lambda header: header.typecode == 'BMP_', open(known_iff_file.filename, "rb")):
-        header = read_resource_header_from_stream(bmpfile)
-        #Bitmap files start with "BM"
-        dta = bmpfile.read()
-        assert dta[0:2] == b'BM'
+try:
+    from nose.tools import assert_raises
 
-@requires_known_iff_file
-def test_compare_header_data_with_reference(known_iff_file):
-    stream = open(known_iff_file.filename, "rb")
-    ifffile = IffFile(stream)
-    #check GLOB resource
-    print(ifffile.glob(stream))
-    assert known_iff_file.glob == ifffile.glob(stream)
+    @requires_known_iff_file
+    def test_read_from_sample_iff_file(known_iff_file):
+        ifffile = IffFile(open(known_iff_file.filename, "rb"))
+        for bmpfile in ifffile.iter_open(lambda header: header.typecode == 'BMP_', open(known_iff_file.filename, "rb")):
+            header = read_resource_header_from_stream(bmpfile)
+            #Bitmap files start with "BM"
+            dta = bmpfile.read()
+            assert dta[0:2] == b'BM'
 
-    #iterate over all entries in reference. For each, find matching
-    #resource in IFF object, then read its header and check if the size
-    #matches with the reference as well
-    for e in known_iff_file.contents:
-        resfile = ifffile.open(lambda header: e["typecode"] == header.typecode and
-                                              e["id"] == header.resid and
-                                              e["flags"] == header.flags and
-                                              e["name"] == header.name, stream)
-        header = read_resource_header_from_stream(resfile)
-        assert e['size'] == header.size
+    def test_maid_iff_file():
+        stream = open("PySims/TheSims_official_gamedata/GameData/Objects/Objects.far/People/maid.iff", "rb")
+        ifffile = IffFile(stream)
+        #for entry in ifffile.iter_open(lambda header: True, stream):
+        #    assert entry != None
 
-stream = open(os.path.join("TheSims_official_gamedata", "UserData2", "Houses", "House00.iff"), "rb")
-ifffile = IffFile(stream)
-for bmpfile in ifffile.iter_open(lambda header: True, stream):
+    @requires_known_iff_file
+    def test_compare_header_data_with_reference(known_iff_file):
+        stream = open(known_iff_file.filename, "rb")
+        ifffile = IffFile(stream)
+        #check GLOB resource
+        print(ifffile.glob(stream))
+        assert known_iff_file.glob == ifffile.glob(stream)
+
+        #iterate over all entries in reference. For each, find matching
+        #resource in IFF object, then read its header and check if the size
+        #matches with the reference as well
+        for e in known_iff_file.contents:
+            resfile = ifffile.open(lambda header: e["typecode"] == header.typecode and
+                                                  e["id"] == header.resid and
+                                                  e["flags"] == header.flags and
+                                                  e["name"] == header.name, stream)
+            header = read_resource_header_from_stream(resfile)
+            assert e['size'] == header.size
+
+    #stream = open(os.path.join("PySims/TheSims_official_gamedata", "UserData2", "Houses", "House00.iff"), "rb")
+    #ifffile = IffFile(stream)
+    #for bmpfile in ifffile.iter_open(lambda header: True, stream):
+    #    pass
+
+except ImportError:
     pass
+

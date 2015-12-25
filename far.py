@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#Copyright (C) 2014 Fabian Hachenberg
+#Copyright (C) 2014, 2015 Fabian Hachenberg
 
 #This file is part of PySims Lib.
 #PySims Lib is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ http://simtech.sourceforge.net/tech/far.html
 
 import struct
 
-from subfile import SubFile as FreeFarFileEntryStream
+from .subfile import SubFile as FreeFarFileEntryStream
 
 class FarFile(object):
     '''
@@ -112,48 +112,64 @@ class FarFile(object):
 
     filenames = property(__get_filenames)
 
+from os.path import join
+
+def extract_far(stream, output_path):
+    '''
+    Creates file for every far entry in output_path
+    '''
+    ff = FarFile(stream)
+    for filename in ff.filenames:
+        entrystream = ff.open(filename, stream)
+        with open(join(output_path, filename), "wb") as fp:
+            fp.write(entrystream.read())
+
 #Testcode
 
-from gamedata_for_tests import requires_known_farfile
-from nose.tools import assert_raises
+from .gamedata_for_tests import requires_known_farfile
 from io import SEEK_SET, SEEK_CUR, SEEK_END
 
-def test_empty_file():
-    #TODO: Test is Unix-specific
-    assert_raises(IOError, FarFile, open("/dev/null", "rb"))
+try:
+    from nose.tools import assert_raises
 
-@requires_known_farfile
-def test_real_dta_create_fileobj(known_far_file):
-    farfile = FarFile(open(known_far_file.filename, "rb"))
-    assert len(farfile) > 0
-    assert known_far_file.get_any_filename() in list(farfile.filenames)
+    def test_empty_file():
+        #TODO: Test is Unix-specific
+        assert_raises(IOError, FarFile, open("/dev/null", "rb"))
 
-@requires_known_farfile
-def test_open_stream(known_far_file):
-    farfile = FarFile(open(known_far_file.filename, "rb"))
-    fname = known_far_file.get_any_filename()
-    strm = farfile.open(fname, open(known_far_file.filename, "rb"))
-    strm.seek(known_far_file.get_file_size(fname))
-    pos1 = strm.tell()
-    strm.seek(known_far_file.get_file_size(fname), SEEK_SET)
-    pos2 = strm.tell()
-    assert pos1 == pos2
-    strm.seek(-known_far_file.get_file_size(fname), SEEK_END)
-    print(strm.tell())
-    assert strm.tell() == 0
-    strm.seek(known_far_file.get_file_size(fname), SEEK_CUR)
-    strm.seek(-known_far_file.get_file_size(fname), SEEK_CUR)
-    assert strm.tell() == 0
+    @requires_known_farfile
+    def test_real_dta_create_fileobj(known_far_file):
+        farfile = FarFile(open(known_far_file.filename, "rb"))
+        assert len(farfile) > 0
+        assert known_far_file.get_any_filename() in list(farfile.filenames)
 
-@requires_known_farfile
-def test_open_multiple_streams(known_far_file):
-    farfile = FarFile(open(known_far_file.filename, "rb"))
-    fname = known_far_file.get_any_filename()
-    strm1 = farfile.open(fname, open(known_far_file.filename, "rb"))
-    strm2 = farfile.open(fname, open(known_far_file.filename, "rb"))
-    data1 = strm1.read()
-    data2 = strm2.read()
-    assert data1 == data2
-    strm1.seek(-1, SEEK_CUR)
-    assert strm1.tell()+1 == strm2.tell()
+    @requires_known_farfile
+    def test_open_stream(known_far_file):
+        farfile = FarFile(open(known_far_file.filename, "rb"))
+        fname = known_far_file.get_any_filename()
+        strm = farfile.open(fname, open(known_far_file.filename, "rb"))
+        strm.seek(known_far_file.get_file_size(fname))
+        pos1 = strm.tell()
+        strm.seek(known_far_file.get_file_size(fname), SEEK_SET)
+        pos2 = strm.tell()
+        assert pos1 == pos2
+        strm.seek(-known_far_file.get_file_size(fname), SEEK_END)
+        print(strm.tell())
+        assert strm.tell() == 0
+        strm.seek(known_far_file.get_file_size(fname), SEEK_CUR)
+        strm.seek(-known_far_file.get_file_size(fname), SEEK_CUR)
+        assert strm.tell() == 0
 
+    @requires_known_farfile
+    def test_open_multiple_streams(known_far_file):
+        farfile = FarFile(open(known_far_file.filename, "rb"))
+        fname = known_far_file.get_any_filename()
+        strm1 = farfile.open(fname, open(known_far_file.filename, "rb"))
+        strm2 = farfile.open(fname, open(known_far_file.filename, "rb"))
+        data1 = strm1.read()
+        data2 = strm2.read()
+        assert data1 == data2
+        strm1.seek(-1, SEEK_CUR)
+        assert strm1.tell()+1 == strm2.tell()
+
+except ImportError:
+    pass
