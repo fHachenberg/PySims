@@ -18,6 +18,13 @@
 '''
 This file allows unit tests to use the original GameData for test
 purposes.
+
+In order to work, the tests require certain files from the original
+GameData. The filenames are:
+
+GameData/Global.far
+GameData/Objects/Objects.far
+GameData/UserData2/Characters/User00000.iff
 '''
 
 import os.path
@@ -149,3 +156,5 @@ def requires_known_iff_file(testfunc):
     def test_decorated():
         testfunc(known_iff_file=known_iff_file)
     return test_decorated
+
+objects_far_filename =  os.path.join(official_gamedta_relpath, "GameData", "Objects", "Objects.far")

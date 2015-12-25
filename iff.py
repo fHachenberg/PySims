@@ -115,7 +115,6 @@ def read_resource_typelist_entry(stream, typecode, version):
         namestr = read_pascal_style_string(stream)
 
     padded_debug_str = ""
-    logger.debug("%s, %s", stream.tell(), stream.tell() % 2)
     if len(namestr)  % 2 != 0:
         stream.read(1) #padding
         padded_debug_str = "(+1 padding-byte)"
@@ -334,6 +333,11 @@ from os.path import join
 def extract_iff(stream, output_path):
     '''
     Creates file for every iff entry in output_path
+
+    The filename for each IFF entry is constructed as
+    <typecode>_<name or id>
+
+    Because some iff entries contain "/", it is substituted for "\"
     '''
     ff = IffFile(stream)
     for entrystream in ff.iter_open(lambda p: True, stream):
@@ -341,7 +345,7 @@ def extract_iff(stream, output_path):
         if header.name == "":
             filename = header.typecode + "_" + str(header.resid)
         else:
-            filename = header.name.replace("/","\\")
+            filename = header.typecode + "_" + header.name.replace("/","\\")
         with open(join(output_path, filename), "wb") as fp:
             fp.write(entrystream.read())
 
@@ -364,12 +368,6 @@ try:
             #Bitmap files start with "BM"
             dta = bmpfile.read()
             assert dta[0:2] == b'BM'
-
-    def test_maid_iff_file():
-        stream = open("PySims/TheSims_official_gamedata/GameData/Objects/Objects.far/People/maid.iff", "rb")
-        ifffile = IffFile(stream)
-        #for entry in ifffile.iter_open(lambda header: True, stream):
-        #    assert entry != None
 
     @requires_known_iff_file
     def test_compare_header_data_with_reference(known_iff_file):
