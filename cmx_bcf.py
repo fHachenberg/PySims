@@ -19,15 +19,327 @@
 Access to BCF and CMX files
 
 CMX files contain definitions of characters. BCF files are
-compressed versions of CMX files
+compressed versions of CMX files. Where CMX files contains
+ASCII strings for numbers, the CMX files contain binary-coded
+integers and floats.
+Because the basic structure is identical, we use the same
+functions and the same classes to represent both file types. The
+difference is in how we read in basic numbers and strings. For the
+CMX variant, we read and interpret lines of text, for the BCF variant,
+we read in blocks of 4 bytes.
+
+Also see
+http://www.donhopkins.com/drupal/node/19
+http://www.donhopkins.com/drupal/node/20
+for additional details of the sceleton description in The Sims™
 '''
 
-def read_sceleton_from_cmx_stream(stream):
+class BinaryDataStream(object):
     '''
-    CMX files use DOS-style line breaks (\r\n)
+    binary version
+    '''
+    def __init__(self, bytestream):
+        self.stream = bytestream
 
-    See http://simtech.sourceforge.net/tech/bcf.html
+    def read_int(self):
+        return struct.unpack("<I", stream.read(4))
+
+    def read_float(self):
+        return struct.unpack("<f", stream.read(4))
+
+    def read_str(self):
+        return read_pascal_style_string(stream).decode("ascii")
+
+class TextDataStream(BinaryDataStream):
     '''
-    lines = stream.read().decode('ascii').split('\r\n')
-    filename = lines[0]
-    texfilename = lines[1]
+    text version
+    '''
+    def __init__(self, bytestream):
+        BinaryDataStream.__init__(self, bytestream)
+        #CMX files start with 2 dummy lines which we strip now
+        bytestream.readline()
+        bytestream.readline()
+
+    def read_int(self):
+        return int(self.stream.readline())
+
+    def read_float(self):
+        return float(self.stream.readline())
+
+    def read_str(self):
+        return self.stream.readline().strip().decode("ascii")
+
+import struct
+
+class simplereprobject(object):
+    '''
+    Mixin for generic repr
+    '''
+    def __repr__(self):
+        return type(self).__qualname__ + "(**" + repr(vars(self)) + ")"
+
+class CharacterData(simplereprobject):
+    '''
+    Describes content of a bcf/cmx file
+    '''
+    def __init__(self, sceletons, suits, skills):
+        self.sceletons = sceletons
+        self.suits = suits
+        self.skills = skills
+
+    class Skill(simplereprobject):
+        def __init__(self, name, ani_name, duration, distance, move_flag, num_pos, num_rot, motions):
+            self.name = name
+            self.ani_name = ani_name        # basename of the animation file containing all keyframes
+            self.duration = duration        # if played in normal speed, propably given in milliseconds?
+            self.distance = distance        # the distance a walking loop should travel forward
+            self.move_flag = move_flag      # tell if it's moving (like a walking loop)
+            self.num_pos = num_pos          # number of positions in animation file
+            self.num_rot = num_rot          # number of rotations in animation file
+            self.motions = motions          # list of motions
+
+    class Motion(simplereprobject):
+        def __inir__(self, bone_name, num_frames, duration, pos_used, rot_used, pos_off, rot_off, props, timelines):
+            self.bone_name = bone_name      # bone which is animated in this motion
+            self.num_frames = num_frames    # how many (key?)frames the animation consists of
+            self.duration = duration        # it seems this is always identical to the duration value of the Skill object this Motion belongs to
+            self.pos_used = pos_used        # flag if position is animated (if 0, pos_off == -1)
+            self.rot_used = rot_used        # flag if rotation is animated (if 0, rot_off == -1)
+            self.pos_off = pos_off          # offset into animation file of skill
+            self.rot_off = rot_off          # offset into animation file of skill
+            self.props = props              # assuming here, that unknown integer describes property list
+            self.timelines = timelines
+
+    class Sceleton(simplereprobject):
+        def __init__(self, name, bones):
+            self.name = name                # name of sceleton. In TheSims there are only 4 sceletons present: adult, child, dog, kat
+            self.bones = bones              # list of bones
+
+    class Bone(simplereprobject):
+        def __init__(self, name, parent_name, props, pos, quat, can_trans, can_rot, suits_can_blend, wiggle_value, wiggle_power):
+            self.name = name                # name of bone
+            self.parent_name = parent_name
+            self.props = props
+            self.pos = pos                  # position of bone
+            self.quat = quat                # rotation quaternion of bone
+            self.can_trans = can_trans      # if bone is allowed to be translated
+            self.can_rot = can_rot          # if bone is allowed to be rotated
+            self.suits_can_blend = suits_can_blend #whether bone allows to blend multiple animations
+            #wiggle properties are leftovers from an attempt to use perlin noise to introduce randomness into animations
+            self.wiggle_value = wiggle_value
+            self.wiggle_power = wiggle_power
+
+    class Suit(simplereprobject):
+        '''
+        Used to attach meshes (+textures) to a sceleton. Normally at least the body mesh is attached as a skin, but
+        there can be additional accessoires attached to the sceleton.
+
+        Quote from http://simtech.sourceforge.net/tech/bcf.html:
+            Originally, skins were wrapped around a single bone, so to wrap the entire body, a suit would
+            normally specify a list of skins covering most of the bones.  With the advent of deformable meshes,
+            skins needed to attach to more than one bone, so bone names are now specified in the mesh itself.
+            (Each mesh is suspended in space relative to the bone(s) and is then draped with the texture.)
+
+            Although the suit is still used to attach a whole-body skin, the suit is now primarily used to attach accessories.
+            Multiple accessories may be attached to the same bone (for example, adding both a clown hat and a clown nose to the head)
+            or accessories may be attached to different bones (for example, adding a dust pan to one hand and a brush to the other).
+            Some special effects are done by attaching and detaching skins (the roach can may or may not have spray, but the skin for
+            the can is unchanged).  Presumably, all of these can be mixed-and-matched in any combination.
+        '''
+        def __init__(self, name, stype, skins, props):
+            self.name = name
+            self.stype = stype              # integer denoting type of skin. Only value 0 and 1 are used in TheSims.
+                                            #   0 - normal suit
+                                            #   1 - censorship (relation with censor_flag in skin not clear)
+            self.skins = skins              # list of skins
+            self.props = props
+
+    class Skin(simplereprobject):
+        '''
+        Binds a deformable mesh to a sceleton. For accessoires, this can be understood as
+        binding a rigid acessoire (like a pipe) to a single bone
+        '''
+        def __init__(self, bone_name, skin_name, censor_flag, props):
+            self.bone_name = bone_name      # not used anymore. leftover from time where TheSims game engine could only animate segmented rigid body parts (no deformable mesh)
+                                            # but according to http://www.donhopkins.com/drupal/node/19 the bone name still has to be validly set in order for the game to correctly load the skin
+            self.skin_name = skin_name      # basename of the file containing the actual deformable mesh description (a SKN or BMF format file)
+            self.censor_flag = censor_flag  # is this a real skin or a bounding box used to draw the pixelation over a nude character?
+            self.props = props #assuming here, that unknown integer describes property list
+
+def read_characterdata_from_datastream(stream):
+    '''
+    @arg stream DataStream
+    '''
+    def read_sublist(stream):
+        '''
+        @arg stream DataStream
+        Property sublist as in http://simtech.sourceforge.net/tech/bcf.html
+        '''
+        num_props = struct.unpack("<I", stream.read(4))
+        props = []
+        for i in range(num_props):
+            prop_name  = stream.read_str()
+            prop_value = stream.read_str()
+            props.append((prop_name, prop_value))
+        return props
+
+    def read_proplist(stream):
+        '''
+        @arg stream DataStream
+        The property list as in http://simtech.sourceforge.net/tech/bcf.html
+        '''
+
+        num_sublists = stream.read_int()
+        sublists = []
+        for i in range(num_sublists):
+            sublists.append(read_sublist(stream))
+        return sublists
+
+    def read_sceleton(stream):
+        '''
+        @arg stream DataStream
+        '''
+        def read_bone(stream):
+            '''
+            @arg stream DataStream
+            '''
+            name = stream.read_str()
+            parent_name = stream.read_str()
+            props = read_proplist(stream)
+            z,y,x = stream.read_float(), stream.read_float(), stream.read_float()
+            pos = x,y,z
+            w,z,y,x = stream.read_float(), stream.read_float(), stream.read_float(), stream.read_float()
+            quat = x,y,z,w
+            can_trans = stream.read_int()
+            can_rot = stream.read_int()
+            return Bone(name, parent_name, props, pos, quat, can_trans, can_rot, suits_can_blend, wiggle_value, wiggle_power)
+
+        name = stream.read_str()
+        num_bones = stream.read_int()
+        bones = []
+        for i in range(num_bones):
+            bones.append(read_bone(stream))
+        return CharacterData.Sceleton(name, bones)
+
+    #Sceletons
+    num_sceletons = stream.read_int()
+    sceletons = []
+    for i in range(num_sceletons):
+        sceletons.append(read_sceleton(stream))
+
+    def read_suit(stream):
+        '''
+        @arg stream DataStream
+        @return Suit object
+        '''
+        def read_skin(stream):
+            '''
+            @arg stream DataStream
+            @return Skin object
+            '''
+            bone_name = stream.read_str()
+            skin_name = stream.read_str()
+            censor_flag = stream.read_int()
+            props = read_proplist(stream) #assuming here, that unknown integer describes property list
+            return CharacterData.Skin(bone_name, skin_name, censor_flag, props)
+
+        name = stream.read_str()
+        stype = stream.read_int()
+        props = read_proplist(stream) #assuming here, that unknown integer describes property list
+        num_skins = stream.read_int()
+        skins = []
+        for i in range(num_skins):
+            skins.append(read_skin(stream))
+        return CharacterData.Suit(name, stype, skins, props)
+
+    #Suits
+    num_suits = stream.read_int()
+    suits = []
+    for i in range(num_suits):
+        suits.append(read_suit(stream))
+
+    def read_skill(stream):
+        '''
+        @arg stream DataStream
+        @return Skill object
+        '''
+        def read_motion(stream):
+            '''
+            @arg stream DataStream
+            @return Motion object
+            '''
+            def read_timeline(stream):
+                '''
+                @arg stream DataStream
+                @return [(<time>, <events>), (<time>, <events>), ...]
+                '''
+                def read_moment(stream):
+                    '''
+                    @arg stream DataStream
+                    @return tuple(<time>, <list of events>)
+                    '''
+                    time = stream.read_int()
+                    events = read_sublist(stream)
+                    return (time, events)
+
+                #we deviate from term 'timelist' used in http://simtech.sourceforge.net/tech/bcf.html
+                #and call it a 'moment' here, because it is a collection of events for a given point in time
+                num_moments = stream.read_int()
+                moments = []
+                for i in range(num_moments):
+                    moments.append(read_moment(stream))
+                return moments
+
+            bone_name  = stream.read_str()
+            num_frames = stream.read_int()
+            duration   = stream.read_float()
+            pos_used   = stream.read_int()
+            rot_used   = stream.read_int()
+            pos_off    = stream.read_int()
+            rot_off    = stream.read_int()
+            props      = read_proplist(stream)
+            #we deviate from term 'timeprop' used in http://simtech.sourceforge.net/tech/bcf.html
+            #and call it a 'time line' here, because it is a sequence of 'moments'
+            num_timelines = stream.read_int()
+            timelines = []
+            for i in range(num_timelines):
+                timelines.append(read_timeline(stream))
+            return CharacterData.Motion(bone_name, num_frames, duration, pos_used, rot_used, pos_off, rot_off, props, timelines)
+
+        skill_name  = read_pascal_style_string(stream)
+        ani_name    = read_pascal_style_string(stream)
+        duration    = stream.read_float()
+        distance    = stream.read_float()
+        move_flag   = stream.read_int()
+        num_pos     = stream.read_int()
+        num_rot     = stream.read_int()
+        num_motions = stream.read_int()
+        motions = []
+        for i in range(num_motions):
+            motions.append(read_motion(stream))
+        return CharacterData.Skill(skill_name, ani_name, duration, distance, move_flag, num_pos, num_rot, motions)
+
+    #Skills
+    num_skills = stream.read_int()
+    skills = []
+    for i in range(num_skills):
+        skills.append(read_skill(stream))
+
+    return CharacterData(sceletons, suits, skills)
+
+# Testcode
+
+from .gamedata_for_tests import official_gamedta_relpath
+import os.path
+from pprint import pprint
+
+def test_read_female_wizard_cmx():
+    known_filename = os.path.join(official_gamedta_relpath, "GameData", "Skins", "B013FCChd_wizd.cmx")
+    known_file = CharacterData([], [CharacterData.Suit("b013fcchd_wizd", 0, [   CharacterData.Skin("PELVIS", "xskin-b013fcchd_wizd-PELVIS-BODY", 0, 0),
+                                                                                CharacterData.Skin("PELVIS", "xskin-b013fcchd_wizd-PELVIS-CAPE", 0, 0)], [])], [])
+    chardta = read_characterdata_from_datastream(TextDataStream(open(known_filename, "rb")))
+    assert type(chardta) == CharacterData
+    assert pprint(chardta.sceletons) == pprint(known_file.sceletons)
+    assert pprint(chardta.suits)     == pprint(known_file.suits)
+    assert pprint(chardta.skills)    == pprint(known_file.skills)
+
