@@ -81,7 +81,7 @@ class FarFile(object):
             '''
             file_len1, file_len2, file_off, filename_len = struct.unpack("<IIII", databuffer.read(16))
             filename = databuffer.read(filename_len).decode('ascii')
-            print(filename, file_len1, file_len2, file_off)
+            #print(filename, file_len1, file_len2, file_off)
             return (filename, file_off, file_len1, file_len2)
 
         databuffer.seek(manifest_offset)
@@ -123,6 +123,44 @@ def extract_far(stream, output_path):
         entrystream = ff.open(filename, stream)
         with open(join(output_path, filename), "wb") as fp:
             fp.write(entrystream.read())
+
+if __name__ == "__main__":
+    def do_list(args):
+        with open(args.farfile, "rb") as f:
+            ff = FarFile(f)
+            for filename in ff.filenames:
+                print(filename)
+
+    def do_extract(args):
+        if args.outfilename == None: #Apply Default
+            args.outfilename = args.filename
+
+        with open(args.farfile, "rb") as f:
+            ff = FarFile(f)
+            if args.filename not in ff.filenames:
+                print("ERROR -- %s not found in %s" % (args.filename, ff.filenames))
+                raise SystemExit(1)
+            stream = ff.open(args.filename, f)
+            with open(args.outfilename, "wb") as outf:
+                outf.write(stream.read())
+
+    import argparse
+
+    parser = argparse.ArgumentParser(prog='far')
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_list = subparsers.add_parser('list', help='list files in FAR archive')
+    parser_list.add_argument('farfile', type=str, help='FAR file to open')
+    parser_list.set_defaults(func=do_list)
+
+    parser_extract = subparsers.add_parser('extract', help='extract file from FAR archive')
+    parser_extract.add_argument('farfile', type=str, help='FAR file to open')
+    parser_extract.add_argument('filename', type=str, help='filename in FAR archive')
+    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of extracted file')
+    parser_extract.set_defaults(func=do_extract)
+
+    args = parser.parse_args()
+    args.func(args)
 
 #Testcode
 

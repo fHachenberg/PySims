@@ -349,6 +349,46 @@ def extract_iff(stream, output_path):
         with open(join(output_path, filename), "wb") as fp:
             fp.write(entrystream.read())
 
+if __name__ == "__main__":
+    def do_list(args):
+        print("%4s %6s %6s %60s" % ("Type", "ID", "Flags", "Name"))
+        with open(args.ifffile, "rb") as f:
+            ff = IffFile(f)
+            for stream in ff.iter_open(lambda header: True, f):
+                header = read_resource_header_from_stream(stream)
+                print("%4s %6s %6s %60s" % (header.typecode, header.resid, header.flags, header.name))
+
+    def do_extract(args):
+        if args.outfilename == None: #Apply Default
+            args.outfilename = args.filename
+
+        with open(args.ifffile, "rb") as f:
+            ff = FarFile(f)
+            if args.filename not in ff.filenames:
+                print("ERROR -- %s not found in %s" % (args.filename, ff.filenames))
+                raise SystemExit(1)
+            stream = ff.open(args.filename, f)
+            with open(args.outfilename, "wb") as outf:
+                outf.write(stream.read())
+
+    import argparse
+
+    parser = argparse.ArgumentParser(prog='iff')
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_list = subparsers.add_parser('list', help='list files in IFF archive')
+    parser_list.add_argument('ifffile', type=str, help='IFF file to open')
+    parser_list.set_defaults(func=do_list)
+
+    parser_extract = subparsers.add_parser('extract', help='extract file from IFF archive')
+    parser_extract.add_argument('ifffile', type=str, help='IFF file to open')
+    parser_extract.add_argument('filename', type=str, help='filename in IFF archive')
+    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of extracted file')
+    parser_extract.set_defaults(func=do_extract)
+
+    args = parser.parse_args()
+    args.func(args)
+
 #Testcode
 
 logger.addHandler(logging.StreamHandler())
