@@ -158,3 +158,30 @@ def requires_known_iff_file(testfunc):
     return test_decorated
 
 objects_far_filename =  os.path.join(official_gamedta_relpath, "GameData", "Objects", "Objects.far")
+
+class KnownCmxFile(object):
+    def __init__(self, path, sceletons, suits, skins):
+        self.path = path
+        self.sceletons = sceletons
+        self.suits = suits
+        self.skins = skins
+
+class requires_known_game_file(object):
+    '''
+    Decorator to access known (generic) game file object
+    in test routine
+    '''
+    def __init__(self, ftype, name):
+        self.ftype = ftype
+        self.name  = name
+
+        self.known_files =  {
+                                "cmx":  {
+                                        }
+                            }
+
+    def __call__(self, testfunc):
+        @functools.wraps(testfunc)
+        def test_decorated():
+            testfunc(self.known_files[self.ftype][self.name])
+        return test_decorated
