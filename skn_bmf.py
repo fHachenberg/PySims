@@ -22,22 +22,22 @@ SKN files contain definitions of character skins. BMF files are
 compressed versions of SKN files
 '''
 
-class RiggedMesh(object):
+class DeformableMesh(object):
     '''
     Ad-hoc class to hold meshes described in BMF/SKN files
     '''
     def __init__(   self, filename, texfilename, bones, faces, bonebindings, uvcoords,
                     blenddata, vertices):
-        self.filename = filename
-        self.texfilename = texfilename
-        self.bones = bones
-        self.faces = faces
-        self.bonebindings = bonebindings
-        self.uvcoords = uvcoords
-        self.blenddata = blenddata
-        self.vertices = vertices
+        self.filename = filename                #name of the deformable mesh
+        self.texfilename = texfilename          #basename of texture file
+        self.bones = bones                      #bone indices used
+        self.faces = faces                      #3-tuples of indices into the vertices list
+        self.bonebindings = bonebindings        #specification which vertices are bound to which bone with a weight of 1.0. bones are denoted by their index in bones list
+        self.uvcoords = uvcoords                #uv coordinates for the vertices
+        self.blenddata = blenddata              #(optional) weight specification for vertices
+        self.vertices = vertices                #vertex coordinates are relative to their primary bone (propably the one they are bound to unblendedly)11
 
-def read_riggedmesh_from_skn_stream(stream):
+def read_deformablemesh_from_skn_stream(stream):
     '''
     SKN files use DOS-style line breaks (\r\n)
 
@@ -72,7 +72,7 @@ def read_riggedmesh_from_skn_stream(stream):
     num_vertices = int(lines[line_vertices])
     vertices = [[float(v) for v in line.split(" ")] for line in lines[line_vertices+1:line_vertices+1+num_vertices]]
 
-    return RiggedMesh(filename, texfilename, bones, faces, bonebindings, uvcoords, blenddata, vertices)
+    return DeformableMesh(filename, texfilename, bones, faces, bonebindings, uvcoords, blenddata, vertices)
 
 #Testcode
 
@@ -82,4 +82,4 @@ if __name__ == "__main__":
 
     skn_filepath = os.path.join("TheSims_official_gamedata", "GameData", "Skins", "xskin-c027fa_germ-HEAD-HEAD.skn")
     with open(skn_filepath, "rb") as f:
-        data = read_riggedmesh_from_skn_stream(f)
+        data = read_deformablemesh_from_skn_stream(f)

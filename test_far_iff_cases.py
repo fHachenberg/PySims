@@ -31,4 +31,10 @@ def test_smoketest_maid_iff_file():
     for entry in ifffile.iter_open(lambda header: True, maid_stream):
         print(entry)
 
-
+def test_smoketest_bones_iff_file():
+    stream = open(gamedata_for_tests.objects_far_filename, "rb")
+    farfile = FarFile(stream)
+    bones_stream = farfile.open("People\\Bones.iff", stream)
+    ifffile = IffFile(bones_stream)
+    for entry in ifffile.iter_open(lambda header: True, bones_stream):
+        print(entry)
