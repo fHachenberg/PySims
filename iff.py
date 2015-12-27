@@ -64,10 +64,16 @@ def read_resource_header_from_stream(stream):
     typecode = typecode_buf.decode('ascii')
     size, resid, flags = struct.unpack(">IHH", stream.read(8))
     namebuf = stream.read(64)
-    #name string is 64 bytes long at most. If shorter, it is
-    #null-terminated. We have to manually cut the byte sequence
-    #there, else we will "import" those zeros into the final string
-    namestr = namebuf.decode('ascii').rstrip('\0')
+    #XXXX resources fill garbage space in IFF files if they were edited in place
+    #and the new resource was smaller than the old one. Their description string
+    #can contain garbage. Therefore in this case we set it to the empty string
+    if typecode == 'XXXX':
+        namestr = ""
+    else:
+        #name string is 64 bytes long at most. If shorter, it is
+        #null-terminated. We have to manually cut the byte sequence
+        #there, else we will "import" those zeros into the final string
+        namestr = namebuf.decode('ascii').rstrip('\0')
 
     logger.debug("read ResourceHeader typecode=%s, size=%s, id=%d, flags=%s, name='%s'", typecode, size, resid, flags, namestr)
 
@@ -315,7 +321,11 @@ class IffFile(object):
         end_of_file_off = stream.tell()
         #run through all entries until we reach end_of_file_off
         stream.seek(self.start, SEEK_SET)
-        while stream.tell() < end_of_file_off:
+        #the -76 is to skip any "dummy tail" in the archive. For example, in Persons\Bones.iff from Objects.far,
+        #the last valid IFF resource ends one byte before the end of the file. 76 is the size of a IFF resource
+        #header and therefore the minimum space an IFF resource requires. If we are closer to the end of the file,
+        #we consider the rest of the data as dummy tail and skip it
+        while stream.tell() < end_of_file_off-76:
             assert not stream.closed #User must not close the stream during yield
             resstart = stream.tell()
             header = read_resource_header_from_stream(stream)
@@ -342,6 +352,8 @@ def extract_iff(stream, output_path):
     ff = IffFile(stream)
     for entrystream in ff.iter_open(lambda p: True, stream):
         header = read_resource_header_from_stream(entrystream)
+        #The header is already read from the stream, so it is NOT put into the output file
+        #This is INTENDED
         if header.name == "":
             filename = header.typecode + "_" + str(header.resid)
         else:
@@ -359,16 +371,40 @@ if __name__ == "__main__":
                 print("%4s %6s %6s %60s" % (header.typecode, header.resid, header.flags, header.name))
 
     def do_extract(args):
+        def generic_filename(header):
+            '''
+            Determine filename for extracted IFF resource if user has not explicitely given a filename
+            '''
+            if header.name == "":
+                return header.typecode + "_" + str(header.resid)
+            else:
+                return header.typecode + "_" + header.name.replace("/","\\")
+
         if args.outfilename == None: #Apply Default
-            args.outfilename = args.filename
+            getfilename = generic_filename
+        else:
+            getfilename = lambda header: args.outfilename
+
+        def typecode_matches(header):
+            if args.typecode == None:
+                return True
+            else:
+                return args.typecode == header.typecode
+
+        if args.id != None:
+            match = lambda header: header.resid == args.id and typecode_matches(header)
+        elif args.descr != None:
+            match = lambda header: header.name == args.descr and typecode_matches(header)
+        else:
+            print("ERROR -- Either id or description string of IFF resource to be extracted must be specified")
+            raise SystemExit(1)
 
         with open(args.ifffile, "rb") as f:
-            ff = FarFile(f)
-            if args.filename not in ff.filenames:
-                print("ERROR -- %s not found in %s" % (args.filename, ff.filenames))
-                raise SystemExit(1)
-            stream = ff.open(args.filename, f)
-            with open(args.outfilename, "wb") as outf:
+            ff = IffFile(f)
+            stream = ff.open(match, f)
+            with open(getfilename(read_resource_header_from_stream(stream)), "wb") as outf:
+                #The header is already read from the stream, so it is NOT put into the output file
+                #This is INTENDED
                 outf.write(stream.read())
 
     import argparse
@@ -376,14 +412,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='iff')
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_list = subparsers.add_parser('list', help='list files in IFF archive')
-    parser_list.add_argument('ifffile', type=str, help='IFF file to open')
+    parser_list = subparsers.add_parser('list', help='list resources in IFF archive')
+    parser_list.add_argument('ifffile', type=str, help='IFF archive file to open')
     parser_list.set_defaults(func=do_list)
 
-    parser_extract = subparsers.add_parser('extract', help='extract file from IFF archive')
-    parser_extract.add_argument('ifffile', type=str, help='IFF file to open')
-    parser_extract.add_argument('filename', type=str, help='filename in IFF archive')
-    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of extracted file')
+    parser_extract = subparsers.add_parser('extract', help='extract resource from IFF archive. The resource is determined by a combination of --typecode and --id or --descr. If more than one resource matches the given specification, the first one is extracted. Important: The resource header is NOT included in the extracted data')
+    parser_extract.add_argument('ifffile', type=str, help='IFF archive file to open')
+    parser_extract.add_argument('--descr', dest="descr", type=str, default=None, help='description of resource to be extracted in IFF archive')
+    parser_extract.add_argument('--typecode', dest="typecode", type=str, default=None, help='Typecode of resource to be extracted in IFF archive')
+    parser_extract.add_argument('--id', dest="id", type=int, default=None, help='ID of resource to be extracted in IFF archive')
+    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of file to be created from IFF resource')
     parser_extract.set_defaults(func=do_extract)
 
     args = parser.parse_args()
@@ -414,7 +452,7 @@ try:
         stream = open(known_iff_file.filename, "rb")
         ifffile = IffFile(stream)
         #check GLOB resource
-        print(ifffile.glob(stream))
+        #print(ifffile.glob(stream))
         assert known_iff_file.glob == ifffile.glob(stream)
 
         #iterate over all entries in reference. For each, find matching
