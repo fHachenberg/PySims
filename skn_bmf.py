@@ -19,8 +19,10 @@
 Access to BMF and SKN files
 
 SKN files contain definitions of character skins. BMF files are
-compressed versions of SKN files
+compressed versions of SKN files. See datastream.py
 '''
+
+from .datastream import TextDataStream, BinaryDataStream
 
 class DeformableMesh(object):
     '''
@@ -28,58 +30,67 @@ class DeformableMesh(object):
     '''
     def __init__(   self, filename, texfilename, bones, faces, bonebindings, uvcoords,
                     blenddata, vertices):
-        self.filename = filename                #name of the deformable mesh
-        self.texfilename = texfilename          #basename of texture file
-        self.bones = bones                      #bone indices used
-        self.faces = faces                      #3-tuples of indices into the vertices list
-        self.bonebindings = bonebindings        #specification which vertices are bound to which bone with a weight of 1.0. bones are denoted by their index in bones list
-        self.uvcoords = uvcoords                #uv coordinates for the vertices
-        self.blenddata = blenddata              #(optional) weight specification for vertices
-        self.vertices = vertices                #vertex coordinates are relative to their primary bone (propably the one they are bound to unblendedly)11
+        self.filename = filename                # name of the deformable mesh
+        self.texfilename = texfilename          # basename of texture file
+        self.bones = bones                      # bone indices used
+        self.faces = faces                      # 3-tuples of indices into the vertices list
+        self.bonebindings = bonebindings        # specification which vertices are bound to which bone with a weight of 1.0. bones are denoted by their index in bones list
+                                                # Important: The list is sorted for the bone idx. So bonebindings[i] is the binding for the bone of index i
+        self.uvcoords = uvcoords                # uv coordinates for the vertices
+        self.blenddata = blenddata              # (optional) weight specification for vertices
+        self.vertices = vertices                # vertex coordinates are relative to their primary bone (propably the one they are bound to unblendedly)11
 
-def read_deformablemesh_from_skn_stream(stream):
+def read_deformablemesh_from_stream(stream):
     '''
+    @param stream Datastream
+
+    Reads Mesh from SKN/BMF stream.
+
     SKN files use DOS-style line breaks (\r\n)
 
     See http://simtech.sourceforge.net/tech/file_formats_skn.htm
     '''
-    lines = stream.read().decode('ascii').split('\r\n')
-    filename = lines[0]
-    texfilename = lines[1]
+    filename = stream.read_str()
+    texfilename = stream.read_str()
 
-    line_bones = 2
-    num_bones = int(lines[line_bones])
+    num_bones = stream.read_int()
     assert num_bones >= 0 and num_bones < 1000 #sanity check
-    bones = lines[line_bones+1:line_bones+1+num_bones]
+    bones = []
+    for i in range(num_bones):
+        bones.append(stream.read_str())
 
-    line_faces = line_bones+num_bones+1 #calc line number where face info starts
-    num_faces = int(lines[line_faces])
-    faces = [[int(v) for v in line.split(" ")] for line in lines[line_faces+1:line_faces+1+num_faces]]
+    num_faces = stream.read_int()
+    faces = []
+    for i in range(num_faces):
+        faces.append(stream.read_ints(3))
 
-    line_bonebindings = line_faces+num_faces+1
-    num_bonebindings = int(lines[line_bonebindings])
-    bonebindings = [[int(v) for v in line.split(" ")] for line in lines[line_bonebindings+1:line_bonebindings+1+num_bonebindings]]
+    num_bonebindings = stream.read_int()
+    bonebindings = []
+    for i in range(num_bonebindings):
+        bonebindings.append(stream.read_ints(5))
 
-    line_uvcoords = line_bonebindings+num_bonebindings+1
-    num_uvcoords = int(lines[line_uvcoords])
-    uvcoords = [[float(v) for v in line.split(" ")] for line in lines[line_uvcoords+1:line_uvcoords+1+num_uvcoords]]
+    num_uvcoords = stream.read_int()
+    uvcoords = []
+    for i in range(num_uvcoords):
+        uvcoords.append(stream.read_floats(2))
 
-    line_blenddata = line_uvcoords+num_uvcoords+1
-    num_blenddata = int(lines[line_blenddata])
-    blenddata = [[int(v) for v in line.split(" ")] for line in lines[line_blenddata+1:line_blenddata+1+num_blenddata]]
+    num_blenddata = stream.read_int()
+    blenddata = []
+    for i in range(num_blenddata):
+        blenddata.append(stream.read_ints(2))
 
-    line_vertices = line_blenddata+num_blenddata+1
-    num_vertices = int(lines[line_vertices])
-    vertices = [[float(v) for v in line.split(" ")] for line in lines[line_vertices+1:line_vertices+1+num_vertices]]
+    num_vertices = stream.read_int()
+    vertices = []
+    for i in range(num_vertices):
+        vertices.append(stream.read_floats(6))
 
     return DeformableMesh(filename, texfilename, bones, faces, bonebindings, uvcoords, blenddata, vertices)
 
 #Testcode
 
-if __name__ == "__main__":
+import os.path
 
-    import os.path
-
+def test_smoketest_germ_skn():
     skn_filepath = os.path.join("TheSims_official_gamedata", "GameData", "Skins", "xskin-c027fa_germ-HEAD-HEAD.skn")
     with open(skn_filepath, "rb") as f:
-        data = read_deformablemesh_from_skn_stream(f)
+        data = read_deformablemesh_from_stream(TextDataStream(f))

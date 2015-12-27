@@ -158,6 +158,7 @@ def requires_known_iff_file(testfunc):
     return test_decorated
 
 objects_far_filename =  os.path.join(official_gamedta_relpath, "GameData", "Objects", "Objects.far")
+animation_far_filename =  os.path.join(official_gamedta_relpath, "GameData", "Animation", "Animation.far")
 
 class KnownCmxFile(object):
     def __init__(self, path, sceletons, suits, skins):

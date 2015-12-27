@@ -31,43 +31,11 @@ we read in blocks of 4 bytes.
 Also see
 http://www.donhopkins.com/drupal/node/19
 http://www.donhopkins.com/drupal/node/20
+http://www.donhopkins.com/drupal/node/21
 for additional details of the sceleton description in The Sims™
 '''
 
-class BinaryDataStream(object):
-    '''
-    binary version
-    '''
-    def __init__(self, bytestream):
-        self.stream = bytestream
-
-    def read_int(self):
-        return struct.unpack("<I", stream.read(4))
-
-    def read_float(self):
-        return struct.unpack("<f", stream.read(4))
-
-    def read_str(self):
-        return read_pascal_style_string(stream).decode("ascii")
-
-class TextDataStream(BinaryDataStream):
-    '''
-    text version
-    '''
-    def __init__(self, bytestream):
-        BinaryDataStream.__init__(self, bytestream)
-        #CMX files start with 2 dummy lines which we strip now
-        bytestream.readline()
-        bytestream.readline()
-
-    def read_int(self):
-        return int(self.stream.readline())
-
-    def read_float(self):
-        return float(self.stream.readline())
-
-    def read_str(self):
-        return self.stream.readline().strip().decode("ascii")
+from .datastream import TextDataStream, BinaryDataStream
 
 import struct
 
@@ -120,8 +88,8 @@ class CharacterData(simplereprobject):
             self.name = name                # name of bone
             self.parent_name = parent_name
             self.props = props
-            self.pos = pos                  # position of bone
-            self.quat = quat                # rotation quaternion of bone
+            self.pos = pos                  # position of bone: list [x,y,z]
+            self.quat = quat                # rotation quaternion of bone: list [w,x,y,z]
             self.can_trans = can_trans      # if bone is allowed to be translated
             self.can_rot = can_rot          # if bone is allowed to be rotated
             self.suits_can_blend = suits_can_blend #whether bone allows to blend multiple animations
@@ -175,7 +143,7 @@ def read_characterdata_from_datastream(stream):
         @arg stream DataStream
         Property sublist as in http://simtech.sourceforge.net/tech/bcf.html
         '''
-        num_props = struct.unpack("<I", stream.read(4))
+        num_props = stream.read_int()
         props = []
         for i in range(num_props):
             prop_name  = stream.read_str()
@@ -185,7 +153,7 @@ def read_characterdata_from_datastream(stream):
 
     def read_proplist(stream):
         '''
-        @arg stream DataStream
+        @param stream DataStream
         The property list as in http://simtech.sourceforge.net/tech/bcf.html
         '''
 
@@ -197,22 +165,25 @@ def read_characterdata_from_datastream(stream):
 
     def read_sceleton(stream):
         '''
-        @arg stream DataStream
+        @param stream DataStream
         '''
         def read_bone(stream):
             '''
-            @arg stream DataStream
+            @param stream DataStream
             '''
             name = stream.read_str()
             parent_name = stream.read_str()
             props = read_proplist(stream)
-            z,y,x = stream.read_float(), stream.read_float(), stream.read_float()
+            x,y,z = stream.read_floats(3)
             pos = x,y,z
-            w,z,y,x = stream.read_float(), stream.read_float(), stream.read_float(), stream.read_float()
+            x,y,z,w = stream.read_floats(4)
             quat = x,y,z,w
             can_trans = stream.read_int()
             can_rot = stream.read_int()
-            return Bone(name, parent_name, props, pos, quat, can_trans, can_rot, suits_can_blend, wiggle_value, wiggle_power)
+            can_blend = stream.read_int()
+            wiggle_value = stream.read_float()
+            wiggle_power = stream.read_float()
+            return CharacterData.Bone(name, parent_name, props, pos, quat, can_trans, can_rot, can_blend, wiggle_value, wiggle_power)
 
         name = stream.read_str()
         num_bones = stream.read_int()
@@ -229,12 +200,12 @@ def read_characterdata_from_datastream(stream):
 
     def read_suit(stream):
         '''
-        @arg stream DataStream
+        @param stream DataStream
         @return Suit object
         '''
         def read_skin(stream):
             '''
-            @arg stream DataStream
+            @param stream DataStream
             @return Skin object
             '''
             bone_name = stream.read_str()
@@ -260,22 +231,22 @@ def read_characterdata_from_datastream(stream):
 
     def read_skill(stream):
         '''
-        @arg stream DataStream
+        @param stream DataStream
         @return Skill object
         '''
         def read_motion(stream):
             '''
-            @arg stream DataStream
+            @param stream DataStream
             @return Motion object
             '''
             def read_timeline(stream):
                 '''
-                @arg stream DataStream
+                @param stream DataStream
                 @return [(<time>, <events>), (<time>, <events>), ...]
                 '''
                 def read_moment(stream):
                     '''
-                    @arg stream DataStream
+                    @param stream DataStream
                     @return tuple(<time>, <list of events>)
                     '''
                     time = stream.read_int()
@@ -337,7 +308,7 @@ def test_read_female_wizard_cmx():
     known_filename = os.path.join(official_gamedta_relpath, "GameData", "Skins", "B013FCChd_wizd.cmx")
     known_file = CharacterData([], [CharacterData.Suit("b013fcchd_wizd", 0, [   CharacterData.Skin("PELVIS", "xskin-b013fcchd_wizd-PELVIS-BODY", 0, 0),
                                                                                 CharacterData.Skin("PELVIS", "xskin-b013fcchd_wizd-PELVIS-CAPE", 0, 0)], [])], [])
-    chardta = read_characterdata_from_datastream(TextDataStream(open(known_filename, "rb")))
+    chardta = read_characterdata_from_datastream(TextDataStream(open(known_filename, "rb"), skip_lines=2))
     assert type(chardta) == CharacterData
     assert pprint(chardta.sceletons) == pprint(known_file.sceletons)
     assert pprint(chardta.suits)     == pprint(known_file.suits)

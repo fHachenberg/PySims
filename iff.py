@@ -28,6 +28,7 @@ from itertools import chain
 from io import SEEK_SET, SEEK_END, SEEK_CUR, BytesIO
 
 from .subfile import SubFile
+from .fileiocommon import read_pascal_style_string, read_zero_zerminated_string
 
 import logging
 
@@ -94,17 +95,6 @@ class IffResourceTypeListEntry(object):
         self.resid = resid              #ID of resource
         self.flags = flags              #flags of resource
         self.name = name                #name of resource
-
-def read_pascal_style_string(stream):
-    length = struct.unpack("B", stream.read(1))[0]
-    namestr = stream.read(length)
-    return namestr
-
-def read_zero_zerminated_string(stream):
-    namestr = stream.read(1)
-    while namestr[-1] != 0:
-        namestr += stream.read(1)
-    return namestr
 
 def read_resource_typelist_entry(stream, typecode, version):
     assert version == 1 or version == 0
