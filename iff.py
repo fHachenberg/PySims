@@ -172,7 +172,10 @@ class IffFile(object):
             zero character and cuts the stream into two peaces at
             that position, returns both
             '''
-            end = next(i for i,k in enumerate(data) if k == 0)
+            try:
+                end = next(i for i,k in enumerate(data) if k == 0)
+            except StopIteration: #no zero found
+                return data, b""
             return data[:end], data[end+1:]
 
         min_signature_size = 60
@@ -344,23 +347,6 @@ def extract_iff(stream, output_path):
         header = read_resource_header_from_stream(entrystream)
         #The header is already read from the stream, so it is NOT put into the output file
         #This is INTENDED
-        if header.name == "":
-            filename = header.typecode + "_" + str(header.resid)
-        else:
-            filename = header.typecode + "_" + header.name.replace("/","\\")
-        with open(join(output_path, filename), "wb") as fp:
-            fp.write(entrystream.read())
-
-if __name__ == "__main__":
-    def do_list(args):
-        print("%4s %6s %6s %60s" % ("Type", "ID", "Flags", "Name"))
-        with open(args.ifffile, "rb") as f:
-            ff = IffFile(f)
-            for stream in ff.iter_open(lambda header: True, f):
-                header = read_resource_header_from_stream(stream)
-                print("%4s %6s %6s %60s" % (header.typecode, header.resid, header.flags, header.name))
-
-    def do_extract(args):
         def generic_filename(header):
             '''
             Determine filename for extracted IFF resource if user has not explicitely given a filename
@@ -370,11 +356,23 @@ if __name__ == "__main__":
             else:
                 return header.typecode + "_" + header.name.replace("/","\\")
 
-        if args.outfilename == None: #Apply Default
-            getfilename = generic_filename
-        else:
-            getfilename = lambda header: args.outfilename
+        with open(join(output_path, generic_filename(header)), "wb") as fp:
+            fp.write(entrystream.read())
 
+#Command-line utility
+if __name__ == "__main__":
+    import sys
+    import io
+
+    def do_list(args):
+        ff = IffFile(f)
+
+        print("%4s %6s %6s %60s" % ("Type", "ID", "Flags", "Name"))
+        for stream in ff.iter_open(lambda header: True, f):
+            header = read_resource_header_from_stream(stream)
+            print("%4s %6s %6s %60s" % (header.typecode, header.resid, header.flags, header.name))
+
+    def do_cat(args):
         def typecode_matches(header):
             if args.typecode == None:
                 return True
@@ -389,32 +387,36 @@ if __name__ == "__main__":
             print("ERROR -- Either id or description string of IFF resource to be extracted must be specified")
             raise SystemExit(1)
 
-        with open(args.ifffile, "rb") as f:
-            ff = IffFile(f)
-            stream = ff.open(match, f)
-            with open(getfilename(read_resource_header_from_stream(stream)), "wb") as outf:
-                #The header is already read from the stream, so it is NOT put into the output file
-                #This is INTENDED
-                outf.write(stream.read())
+        ff = IffFile(args.instream)
+        stream = ff.open(match, args.instream)
+        header = read_resource_header_from_stream(stream)
+        #The header is already read from the stream, so it is NOT put into the output file
+        #This is INTENDED
+        sys.stdout.buffer.write(stream.read())
 
     import argparse
 
     parser = argparse.ArgumentParser(prog='iff')
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_list = subparsers.add_parser('list', help='list resources in IFF archive')
-    parser_list.add_argument('ifffile', type=str, help='IFF archive file to open')
+    parser_list = subparsers.add_parser('list', help='list resources in IFF archive. The archive is read from stdin.')
     parser_list.set_defaults(func=do_list)
 
-    parser_extract = subparsers.add_parser('extract', help='extract resource from IFF archive. The resource is determined by a combination of --typecode and --id or --descr. If more than one resource matches the given specification, the first one is extracted. Important: The resource header is NOT included in the extracted data')
-    parser_extract.add_argument('ifffile', type=str, help='IFF archive file to open')
+    parser_extract = subparsers.add_parser('cat', help='extract resource from IFF archive. IFF data is expected from stdin. The resource is determined by a combination of --typecode and --id or --descr. If more than one resource matches the given specification, the first one is extracted. Important: The resource header is NOT included in the extracted data')
     parser_extract.add_argument('--descr', dest="descr", type=str, default=None, help='description of resource to be extracted in IFF archive')
     parser_extract.add_argument('--typecode', dest="typecode", type=str, default=None, help='Typecode of resource to be extracted in IFF archive')
     parser_extract.add_argument('--id', dest="id", type=int, default=None, help='ID of resource to be extracted in IFF archive')
-    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of file to be created from IFF resource')
-    parser_extract.set_defaults(func=do_extract)
+    parser_extract.set_defaults(func=do_cat)
 
     args = parser.parse_args()
+
+    if sys.stdin.buffer.seekable():
+        args.instream = sys.stdin.buffer
+    else:
+        #Because stdin is not seekable, we have to buffer it
+        buf = sys.stdin.buffer.read(2000000000) #2gb limit
+        args.instream = io.BytesIO(buf)
+
     args.func(args)
 
 #Testcode

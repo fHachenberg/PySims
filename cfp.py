@@ -29,19 +29,26 @@ import math
 def read_compressed_floats(stream, num):
     dta = [None]*num
     last_value = None
-    for i in range(num):
+    count_read = 0
+    while count_read < num:
         opcode = struct.unpack("<B", stream.read(1))[0]
         if opcode == 0xff: #raw float
-            dta[i] = struct.unpack("<f", stream.read(4))[0]
-            last_value = dta[i]
+            dta[count_read] = struct.unpack("<f", stream.read(4))[0]
+            last_value = dta[count_read]
+            count_read += 1
         elif opcode == 0xfe: #repeat
             assert last_value != None
-            count = struct.unpack("<H", stream.read(2))[0]
-            dta[i:i+count] = [last_value]*count
+            count = 1 + struct.unpack("<H", stream.read(2))[0] #zero means: repeated once
+            dta[count_read:count_read+count] = [last_value]*count
+            count_read += count
+        elif opcode == 0xfd:
+            assert False
         else: #opcode is actually a delta value
             x = float(opcode)
-            dta[i] = 3.9676e-10 * (x-126)**3 * math.fabs(x-126)
-            last_value = dta[i]
+            dta[count_read] = last_value + 3.9676e-10 * (x-126)**3 * math.fabs(x-126)
+            last_value = dta[count_read]
+            count_read += 1
+    assert count_read == num #sanity check
     return dta
 
 def read_animdta_from_cfp_stream(stream, num_px, num_py, num_pz, num_rw, num_rx, num_ry, num_rz):
@@ -51,14 +58,15 @@ def read_animdta_from_cfp_stream(stream, num_px, num_py, num_pz, num_rw, num_rx,
 
     @return tuple of lists of floats: (px, py, pz, rw, rx, ry, rz)
     '''
-    px = read_compressed_floats(stream, num_px)
-    py = read_compressed_floats(stream, num_py)
-    pz = read_compressed_floats(stream, num_pz)
+    dta = read_compressed_floats(stream, num_px+num_py+num_pz+num_rx+num_ry+num_rz+num_rw)
 
-    rw = read_compressed_floats(stream, num_rw)
-    rx = read_compressed_floats(stream, num_rx)
-    ry = read_compressed_floats(stream, num_ry)
-    rz = read_compressed_floats(stream, num_rz)
-
-    return px, py, pz, rx, ry, rz, rw
-
+    a,b,c,d,e,f,g,h = 0, \
+                      num_px, \
+                      num_px+num_py, \
+                      num_px+num_py+num_pz, \
+                      num_px+num_py+num_pz+num_rx, \
+                      num_px+num_py+num_pz+num_rx+num_ry, \
+                      num_px+num_py+num_pz+num_rx+num_ry+num_rz, \
+                      num_px+num_py+num_pz+num_rx+num_ry+num_rz+num_rw
+    fromto = [(a,b), (b,c), (c,d), (g,h), (d,e), (e,f), (f,g)]
+    return [dta[f:t] for (f,t) in fromto]

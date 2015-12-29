@@ -124,42 +124,44 @@ def extract_far(stream, output_path):
         with open(join(output_path, filename), "wb") as fp:
             fp.write(entrystream.read())
 
+#Command-line utility
 if __name__ == "__main__":
+    import sys
+
     def do_list(args):
-        with open(args.farfile, "rb") as f:
-            ff = FarFile(f)
-            for filename in ff.filenames:
-                print(filename)
+        ff = FarFile(args.instream)
+        for filename in ff.filenames:
+            print(filename)
 
-    def do_extract(args):
-        if args.outfilename == None: #Apply Default
-            args.outfilename = args.filename
-
-        with open(args.farfile, "rb") as f:
-            ff = FarFile(f)
-            if args.filename not in ff.filenames:
-                print("ERROR -- %s not found in %s" % (args.filename, ff.filenames))
-                raise SystemExit(1)
-            stream = ff.open(args.filename, f)
-            with open(args.outfilename, "wb") as outf:
-                outf.write(stream.read())
+    def do_cat(args):
+        ff = FarFile(args.instream)
+        if args.filename not in ff.filenames:
+            print("ERROR -- %s not found in %s" % (args.filename, ff.filenames))
+            raise SystemExit(1)
+        stream = ff.open(args.filename, args.instream)
+        sys.stdout.buffer.write(stream.read())
 
     import argparse
 
     parser = argparse.ArgumentParser(prog='far')
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_list = subparsers.add_parser('list', help='list files in FAR archive')
-    parser_list.add_argument('farfile', type=str, help='FAR file to open')
+    parser_list = subparsers.add_parser('list', help='list files in FAR archive (expected from stdin)')
     parser_list.set_defaults(func=do_list)
 
-    parser_extract = subparsers.add_parser('extract', help='extract file from FAR archive')
-    parser_extract.add_argument('farfile', type=str, help='FAR file to open')
+    parser_extract = subparsers.add_parser('cat', help='cat file from FAR archive (expected from stdin) to stdout')
     parser_extract.add_argument('filename', type=str, help='filename in FAR archive')
-    parser_extract.add_argument('--out', dest='outfilename', type=str, default=None, help='filename of extracted file')
-    parser_extract.set_defaults(func=do_extract)
+    parser_extract.set_defaults(func=do_cat)
 
     args = parser.parse_args()
+
+    if sys.stdin.buffer.seekable():
+        args.instream = sys.stdin.buffer
+    else:
+        #Because stdin is not seekable, we have to buffer it
+        buf = sys.stdin.buffer.read(2000000000) #2gb limit
+        args.instream = io.BytesIO(buf)
+
     args.func(args)
 
 #Testcode

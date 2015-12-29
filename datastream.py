@@ -75,7 +75,7 @@ class TextDataStream(BinaryDataStream):
         return int(self.stream.readline())
 
     def read_ints(self, num):
-        elements = [a for a in self.stream.readline().decode('ascii').strip(seq_delim).split(" ") if a != ""]
+        elements = [a for a in self.stream.readline().decode('ascii').strip(self.seq_delim).split(" ") if a != ""]
         assert len(elements) == num
         return tuple(int(a) for a in elements)
 
@@ -83,7 +83,7 @@ class TextDataStream(BinaryDataStream):
         return float(self.stream.readline())
 
     def read_floats(self, num):
-        elements = [a for a in self.stream.readline().decode('ascii').strip(seq_delim).split(" ") if a != ""]
+        elements = [a for a in self.stream.readline().decode('ascii').strip(self.seq_delim).split(" ") if a != ""]
         assert len(elements) == num
         return tuple(float(a) for a in elements)
 

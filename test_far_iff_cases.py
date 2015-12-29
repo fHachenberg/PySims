@@ -58,9 +58,20 @@ def test_smoketest_bcf_file_for_adult_skeleton():
     obj = read_characterdata_from_datastream(BinaryDataStream(bcf_stream))
     assert len(obj.sceletons) == 1
 
+def test_smoketest_cfp_file_for_sink_wash_dishes_start():
+    stream = open(gamedata_for_tests.animation_far_filename, "rb")
+    farfile = FarFile(stream)
+    cfp_stream = farfile.open("xskill-a2o-sink-washdishes-start.cfp", stream)
+    obj = read_animdta_from_cfp_stream(cfp_stream, 48, 48, 48, 696, 696, 696, 696)
+
+def test_smoketest_cfp_file_for_sink_wash_dishes_loop():
+    stream = open(gamedata_for_tests.animation_far_filename, "rb")
+    farfile = FarFile(stream)
+    cfp_stream = farfile.open("xskill-a2o-sink-washdishes-loop.cfp", stream)
+    obj = read_animdta_from_cfp_stream(cfp_stream, 48, 48, 48, 696, 696, 696, 696)
+
 def test_smoketest_cfp_file_for_sink_wash_dishes_stop():
     stream = open(gamedata_for_tests.animation_far_filename, "rb")
     farfile = FarFile(stream)
-    cfp_stream = farfile.open("xskill-c2o-sink-washdishes-stop.cfp", stream)
-    obj = read_animdta_from_cfp_stream(cfp_stream, 2, 2, 2, 2, 2, 2, 2)
-
+    cfp_stream = farfile.open("xskill-a2o-sink-washdishes-stop.cfp", stream)
+    obj = read_animdta_from_cfp_stream(cfp_stream, 48, 48, 48, 696, 696, 696, 696)

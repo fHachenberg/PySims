@@ -67,7 +67,7 @@ class CharacterData(simplereprobject):
             self.motions = motions          # list of motions
 
     class Motion(simplereprobject):
-        def __inir__(self, bone_name, num_frames, duration, pos_used, rot_used, pos_off, rot_off, props, timelines):
+        def __init__(self, bone_name, num_frames, duration, pos_used, rot_used, pos_off, rot_off, props, timelines):
             self.bone_name = bone_name      # bone which is animated in this motion
             self.num_frames = num_frames    # how many (key?)frames the animation consists of
             self.duration = duration        # it seems this is always identical to the duration value of the Skill object this Motion belongs to
@@ -84,6 +84,10 @@ class CharacterData(simplereprobject):
             self.bones = bones              # list of bones
 
     class Bone(simplereprobject):
+        '''
+        Quote from http://www.donhopkins.com/drupal/node/19
+            Each Bone inherits its parent's coordinate system, then adds its translation followed by its rotation, to calculate the coordinate system in which the skins are rendered, then passes that transformation on to its children.
+        '''
         def __init__(self, name, parent_name, props, pos, quat, can_trans, can_rot, suits_can_blend, wiggle_value, wiggle_power):
             self.name = name                # name of bone
             self.parent_name = parent_name
@@ -134,9 +138,11 @@ class CharacterData(simplereprobject):
             self.censor_flag = censor_flag  # is this a real skin or a bounding box used to draw the pixelation over a nude character?
             self.props = props #assuming here, that unknown integer describes property list
 
-def read_characterdata_from_datastream(stream):
+def read_characterdata_from_stream(stream):
     '''
-    @arg stream DataStream
+    @arg stream file-like object
+
+    This routine automatically determines whether this is a cmx stream (text) or a bcf stream
     '''
     def read_sublist(stream):
         '''
@@ -176,8 +182,8 @@ def read_characterdata_from_datastream(stream):
             props = read_proplist(stream)
             x,y,z = stream.read_floats(3)
             pos = x,y,z
-            x,y,z,w = stream.read_floats(4)
-            quat = x,y,z,w
+            w,x,y,z = stream.read_floats(4)
+            quat = w,x,y,z
             can_trans = stream.read_int()
             can_rot = stream.read_int()
             can_blend = stream.read_int()
@@ -192,8 +198,23 @@ def read_characterdata_from_datastream(stream):
             bones.append(read_bone(stream))
         return CharacterData.Sceleton(name, bones)
 
+    #We don't know yet if the stream contains cmx or bcf data. And because
+    #we don't want to impose the requirement that the stream is random-access,
+    #we will now read the first 4 bytes. Cmx file always start with 2 lines
+    #   // Character File. Copyright 1997, Maxis Inc.
+    #   version 300
+    first4bytes = stream.read(4)
+    if first4bytes ==  b'// C':
+        #TextStream
+        stream = TextDataStream(stream, skip_lines=2, seq_delim='|')
+        num_sceletons = stream.read_int()
+    else:
+        #BinaryStream
+        stream = BinaryDataStream(stream)
+        num_sceletons = struct.unpack("<I", first4bytes)[0]
+
     #Sceletons
-    num_sceletons = stream.read_int()
+    assert num_sceletons < 100 #sanity check (if this is not a cmx file, we will proprably get something absurd here)
     sceletons = []
     for i in range(num_sceletons):
         sceletons.append(read_sceleton(stream))
@@ -248,6 +269,22 @@ def read_characterdata_from_datastream(stream):
                     '''
                     @param stream DataStream
                     @return tuple(<time>, <list of events>)
+                    Quote from http://www.donhopkins.com/drupal/node/19 concerning the possible events:
+
+                        xevt event sends numeric argument to animate primitive false branch.
+                        interruptable and interruptible events set practice interruptable flag.
+                        anchor event on bone anchors that bone.
+                        dress event dresses named suit on skeleton.
+                        undress event undresses named suit from skeleton.
+                        lefthand event sets left hand to integer argument.
+                        righthand event sets right hand to integer argument.
+                        censor event sets censorship mask.
+                        sound event plays named sound.
+                        selectedsound event plays named sound if character is selected.
+                        delselectedsound event plays named sound if character is not selected.
+                        footstep event plays footstep, integer argument tells if left or right, but is ignored.
+                        discontinuity event tells us to expect a snap in root location or rotation, so kill the last practice and don't blend.
+
                     '''
                     time = stream.read_int()
                     events = read_sublist(stream)
@@ -275,10 +312,10 @@ def read_characterdata_from_datastream(stream):
             timelines = []
             for i in range(num_timelines):
                 timelines.append(read_timeline(stream))
-            return CharacterData.Motion(bone_name, num_frames, duration, pos_used, rot_used, pos_off, rot_off, props, timelines)
+            return CharacterData.Motion(bone_name, num_frames, duration, pos_used != 0, rot_used != 0, pos_off, rot_off, props, timelines)
 
-        skill_name  = read_pascal_style_string(stream)
-        ani_name    = read_pascal_style_string(stream)
+        skill_name  = stream.read_str()
+        ani_name    = stream.read_str()
         duration    = stream.read_float()
         distance    = stream.read_float()
         move_flag   = stream.read_int()
@@ -297,6 +334,43 @@ def read_characterdata_from_datastream(stream):
         skills.append(read_skill(stream))
 
     return CharacterData(sceletons, suits, skills)
+
+#Command-line utility
+if __name__ == "__main__":
+    import sys
+    from pprint import pprint
+
+    def do_list(args):
+        cdta = read_characterdata_from_stream(args.instream)
+        print("Skeletons:")
+        for skeleton in cdta.sceletons:
+            print("  " + skeleton.name)
+            for bone in skeleton.bones:
+                print("    " + bone.name)
+        print("Suits:")
+        for suit in cdta.suits:
+            print("  " + suit.name)
+            for skin in suit.skins:
+                print("    " + skin.skin_name)
+        print("Skills:")
+        for skill in cdta.skills:
+            print("  " + skill.name)
+
+    import argparse
+
+    parser = argparse.ArgumentParser(prog='far')
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_list = subparsers.add_parser('list', help='list data in cmx/bcf file (expected from stdin)')
+    parser_list.set_defaults(func=do_list)
+
+    args = parser.parse_args()
+
+    #We do not require random-access to input stream here,
+    #so we just use stdin directly!
+    args.instream = sys.stdin.buffer
+
+    args.func(args)
 
 # Testcode
 
