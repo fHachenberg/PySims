@@ -26,6 +26,14 @@ import struct
 
 from .subfile import SubFile as FreeFarFileEntryStream
 
+class FARIOError(IOError):
+    '''
+    Error during accessing file in FAR archive or during reading
+    FAR archive itself
+    '''
+    def __init__(self, *args, **kwargs):
+        IOError.__init__(self, *args, **kwargs)
+
 class FarFile(object):
     '''
     Represents a FAR file
@@ -71,7 +79,7 @@ class FarFile(object):
 
         signature = databuffer.read(8)
         if bytes(signature) != b"FAR!byAZ":
-            raise IOError("FAR signature is missing, propably not a FAR file")
+            raise FARIOError("FAR signature is missing, propably not a FAR file")
         version, manifest_offset = struct.unpack("<iI", databuffer.read(8))
         #Read the Manifest, create an entry for every file entry
 
@@ -98,7 +106,7 @@ class FarFile(object):
         NOTE: It is not checked whether the stream is actually equivalent to the one the FAR file object was created with
         '''
         if not filename in self.filenames:
-            raise IOError("No such file in FAR file: '" + str(filename) + "'")
+            raise FARIOError("No such file in FAR file: '" + str(filename) + "'")
         for entry in self.__entries:
             if filename == entry.filename:
                 return FreeFarFileEntryStream(stream, entry.off, entry.len1)
@@ -174,7 +182,7 @@ try:
 
     def test_empty_file():
         #TODO: Test is Unix-specific
-        assert_raises(IOError, FarFile, open("/dev/null", "rb"))
+        assert_raises(FARIOError, FarFile, open("/dev/null", "rb"))
 
     @requires_known_farfile
     def test_real_dta_create_fileobj(known_far_file):
