@@ -1,0 +1,21 @@
+---
+title: Important exceptional cases like KeyboardInterrupt are not handled
+status: open
+created: 2015-12-30
+component: ''
+priority: 1
+severity: 1
+points: 1
+type: task
+description: ! 'For example it''s currently not clearly handleable (because no specialized
+  exception class was derived) if we try to open a non-existent file in an FAR archive.
+
+  ''.''
+
+
+
+
+
+  c
+
+  .'
