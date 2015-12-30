@@ -22,14 +22,23 @@ class SubFile(io.IOBase):
     '''
     Provides a read-only file-like bytes stream
     to a subrange in side a given stream
+
+    If for a given stream there exist multiple SubFile instanes,
+    there's the possibility that they issue read operations in
+    parallel (not in a multithreading sense but in the way that
+    instance A does some reading and before it's finished, instance B
+    does some reading). To prevent errors originating from this, we
+    -if necessary- reposition the stream pointer before any read operation
     '''
     def __init__(self, stream, off, length):
         io.IOBase.__init__(self)
         self.stream = stream
+        #reposition stream
         self.stream.seek(off)
         self.off = off
         self.length = length
         self.end = off + length #offset of byte behind end of file
+        self.last_readpos = self.off #used reposition stream before any read operation
 
     '''
     def __iter__(self):
@@ -48,10 +57,15 @@ class SubFile(io.IOBase):
 
     def read(self, readlen=-1):
         pos = self.stream.tell()
+        if pos != self.last_readpos: #reposition
+            self.stream.seek(self.last_readpos)
+            pos = self.last_readpos
         if readlen == -1: #read the rest available
-            return self.stream.read(self.end-pos)
+            result = self.stream.read(self.end-pos)
         else:
-            return self.stream.read(min(self.end-pos, readlen))
+            result = self.stream.read(min(self.end-pos, readlen))
+        self.last_readpos = self.stream.tell()
+        return result
 
     #...Interesting: If I include this close routine, the stream is
     #automatically closed as soon as the object is destroyed. Python
@@ -75,17 +89,27 @@ class SubFile(io.IOBase):
 
     def readline(self, size=-1):
         pos = self.stream.tell()
+        if pos != self.last_readpos: #reposition
+            self.stream.seek(self.last_readpos)
+            pos = self.last_readpos
         if size == -1:
             size = self.length
         size = min(size, self.end - pos)
-        return self.stream.readline(size)
+        result = self.stream.readline(size)
+        self.last_readpos = self.stream.tell()
+        return result
 
     def readlines(self, hint=-1):
         pos = self.stream.tell()
+        if pos != self.last_readpos: #reposition
+            self.stream.seek(self.last_readpos)
+            pos = self.last_readpos
         if hint == -1:
             hint = self.length
         hint = min(hint, self.end - pos)
-        return self.stream.readlines(hint)
+        result = self.stream.readlines(hint)
+        self.last_readpos = self.stream.tell()
+        return result
 
     def seek(self, offset, whence=SEEK_SET):
         if whence == SEEK_SET:
@@ -98,12 +122,14 @@ class SubFile(io.IOBase):
                 self.stream.seek(max(self.off-pos, offset), SEEK_CUR)
         elif whence == SEEK_END:
             self.stream.seek(max(self.off, self.end+offset), SEEK_SET)
+        self.last_readpos = self.stream.tell()
 
     def seekable(self):
         return self.stream.seekable()
 
     def tell(self):
-        return self.stream.tell() - self.off
+        return self.last_readpos - self.off
+        #return self.stream.tell() - self.off
 
     def writable(self):
         return False

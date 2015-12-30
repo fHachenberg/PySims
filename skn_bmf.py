@@ -45,6 +45,7 @@ def read_deformablemesh_from_stream(stream):
     @param stream Datastream
 
     Reads Mesh from SKN/BMF stream.
+    Does NOT automatically determine whether this is a text or a binary stream!
 
     SKN files use DOS-style line breaks (\r\n)
 
