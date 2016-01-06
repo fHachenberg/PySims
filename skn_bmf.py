@@ -28,9 +28,9 @@ class DeformableMesh(object):
     '''
     Ad-hoc class to hold meshes described in BMF/SKN files
     '''
-    def __init__(   self, filename, texfilename, bones, faces, bonebindings, uvcoords,
+    def __init__(   self, name, texfilename, bones, faces, bonebindings, uvcoords,
                     blenddata, vertices):
-        self.filename = filename                # name of the deformable mesh
+        self.name = name                        # name of the deformable mesh
         self.texfilename = texfilename          # basename of texture file
         self.bones = bones                      # bone indices used
         self.faces = faces                      # 3-tuples of indices into the vertices list
@@ -51,7 +51,7 @@ def read_deformablemesh_from_stream(stream):
 
     See http://simtech.sourceforge.net/tech/file_formats_skn.htm
     '''
-    filename = stream.read_str()
+    name = stream.read_str()
     texfilename = stream.read_str()
 
     num_bones = stream.read_int()
@@ -85,7 +85,7 @@ def read_deformablemesh_from_stream(stream):
     for i in range(num_vertices):
         vertices.append(stream.read_floats(6))
 
-    return DeformableMesh(filename, texfilename, bones, faces, bonebindings, uvcoords, blenddata, vertices)
+    return DeformableMesh(name, texfilename, bones, faces, bonebindings, uvcoords, blenddata, vertices)
 
 #Testcode
 
